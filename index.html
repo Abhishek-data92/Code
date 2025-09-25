@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Momentum: Habit Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 640px;
+        }
+        .habit-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .habit-item {
+            display: flex;
+            align-items: center;
+            background-color: #fff;
+            padding: 1.25rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .habit-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="p-8">
+    <div class="container bg-white rounded-3xl shadow-lg p-8 md:p-12 space-y-8">
+        <!-- Header Section -->
+        <header class="text-center space-y-2">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 leading-tight">Momentum ✨</h1>
+            <p class="text-lg text-gray-600">Your AI-Powered Habit Coach</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="space-y-6">
+            <p class="text-gray-700">Tell me a goal you want to achieve, and I'll generate some habits to get you started!</p>
+            
+            <textarea id="goal-input" rows="3" class="w-full p-4 border border-gray-300 rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="e.g., I want to become a better writer."></textarea>
+            
+            <button id="generate-btn" class="w-full bg-purple-600 text-white font-semibold py-3 rounded-xl shadow-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                Generate Habits ✨
+            </button>
+            
+            <div id="loading-indicator" class="hidden text-center mt-4">
+                <svg class="animate-spin h-8 w-8 text-purple-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+            
+            <div id="results-container" class="space-y-4 hidden mt-6">
+                <h3 class="text-lg font-bold">Your Suggested Habits:</h3>
+                <ul id="habit-list" class="habit-list space-y-4">
+                    <!-- Habits will be inserted here by JavaScript -->
+                </ul>
+            </div>
+
+            <div id="error-message" class="hidden text-red-500 text-center mt-4">
+                An error occurred. Please try again.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const generateBtn = document.getElementById('generate-btn');
+            const goalInput = document.getElementById('goal-input');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const resultsContainer = document.getElementById('results-container');
+            const habitList = document.getElementById('habit-list');
+            const errorMessage = document.getElementById('error-message');
+
+            // API configuration for Gemini
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            // Helper function to show/hide elements
+            const showElement = (element) => element.classList.remove('hidden');
+            const hideElement = (element) => element.classList.add('hidden');
+            const disableButton = (button) => button.disabled = true;
+            const enableButton = (button) => button.disabled = false;
+
+            // Handle button click to generate habits
+            generateBtn.addEventListener('click', async () => {
+                const userGoal = goalInput.value.trim();
+
+                if (!userGoal) {
+                    return; // Don't proceed if the input is empty
+                }
+
+                // UI state management
+                hideElement(resultsContainer);
+                hideElement(errorMessage);
+                showElement(loadingIndicator);
+                disableButton(generateBtn);
+
+                try {
+                    const payload = {
+                        contents: [{
+                            parts: [{ 
+                                text: `Act as a helpful habit-building coach. Given the user's goal: "${userGoal}", generate a list of 5 concrete, actionable habit ideas to help them achieve it. Provide the response as a JSON array of strings, with each string being a habit. Do not include any other text or formatting.` 
+                            }]
+                        }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "ARRAY",
+                                items: { "type": "STRING" }
+                            }
+                        }
+                    };
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    const jsonPart = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    const habits = JSON.parse(jsonPart);
+
+                    // Clear previous habits
+                    habitList.innerHTML = '';
+                    
+                    if (Array.isArray(habits) && habits.length > 0) {
+                        habits.forEach(habitText => {
+                            const habitItem = document.createElement('li');
+                            habitItem.className = 'habit-item';
+                            habitItem.innerHTML = `
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-purple-600 mr-4 flex-shrink-0">
+                                    <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd" />
+                                </svg>
+                                <span class="text-gray-800">${habitText}</span>
+                            `;
+                            habitList.appendChild(habitItem);
+                        });
+                        showElement(resultsContainer);
+                    } else {
+                        throw new Error('No habits returned.');
+                    }
+
+                } catch (error) {
+                    console.error('Error generating habits:', error);
+                    showElement(errorMessage);
+                } finally {
+                    hideElement(loadingIndicator);
+                    enableButton(generateBtn);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
